@@ -1,4 +1,4 @@
-﻿using CounterStrikeSharp.API;
+﻿using System.Text.Json.Serialization;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
@@ -8,7 +8,6 @@ using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using DamageManagement.API;
 using Microsoft.Extensions.Logging;
-using System.Text.Json.Serialization;
 
 namespace DamageManagement
 {
@@ -16,8 +15,17 @@ namespace DamageManagement
     {
         [JsonPropertyName("enable")]
         public bool enableCfg { get; set; } = true;
-        [JsonPropertyName("enable_inflictors")] public string[] listWeapons { get; set; } = ["inferno", "hegrenade_projectile", "flashbang_projectile", 
-            "smokegrenade_projectile", "decoy_projectile", "planted_c4"];
+
+        [JsonPropertyName("enable_inflictors")]
+        public string[] listWeapons { get; set; } =
+            [
+                "inferno",
+                "hegrenade_projectile",
+                "flashbang_projectile",
+                "smokegrenade_projectile",
+                "decoy_projectile",
+                "planted_c4",
+            ];
     }
 
     public partial class DamageManagement : BasePlugin, IPluginConfig<Config>
@@ -26,21 +34,21 @@ namespace DamageManagement
 
         public override string ModuleVersion => "1.1";
         public override string ModuleAuthor => "HoanNK";
-        public Config Config { get; set; }
+        public Config Config { get; set; } = new Config();
         bool enabled { get; set; }
         static bool isSlayCommand { get; set; }
+
         //This contains all designer name of the weapon class that allow to be taken damage to the teammates
         //Designer name can be found here https://cs2.poggu.me/dumped-data/entity-list
         string[] enableDmgInflictors = [];
 
         //Shared API
-        public DamageManagementAPI managementAPI { get; set; }
-        private static PluginCapability<IDamageManagementAPI> DamageManagemenCapability { get; } = new("damagemanagement:api");   
+        public DamageManagementAPI managementAPI { get; set; } = new();
+        private static PluginCapability<IDamageManagementAPI> DamageManagemenCapability { get; } =
+            new("damagemanagement:api");
 
         public override void Load(bool hotReload)
         {
-            Logger.LogInformation("Loading plugin");
-
             managementAPI = new DamageManagementAPI();
             Capabilities.RegisterPluginCapability(DamageManagemenCapability, () => managementAPI);
 
@@ -51,24 +59,28 @@ namespace DamageManagement
         {
             enabled = config.enableCfg;
             enableDmgInflictors = config.listWeapons;
-            Logger.LogInformation("Config has been parsed successfully");
-            if(enableDmgInflictors.Length == 0)
+            if (enableDmgInflictors.Length == 0)
             {
-                enableDmgInflictors = ["inferno", "hegrenade_projectile", "flashbang_projectile", "smokegrenade_projectile", "decoy_projectile", "planted_c4"];
+                enableDmgInflictors =
+                [
+                    "inferno",
+                    "hegrenade_projectile",
+                    "flashbang_projectile",
+                    "smokegrenade_projectile",
+                    "decoy_projectile",
+                    "planted_c4",
+                ];
             }
         }
 
         public override void Unload(bool hotReload)
         {
-            Logger.LogInformation("Unloading plugin");
             VirtualFunctions.CBaseEntity_TakeDamageOldFunc.Unhook(OnTakeDamage, HookMode.Pre);
         }
 
         private HookResult OnTakeDamage(DynamicHook hook)
         {
-            //Check handle for API first
             var ExecuteOriginalMethod = managementAPI.IsNeedCallOriginalMethod();
-            //it will allow consumer determine execute original method or not
             if (ExecuteOriginalMethod)
             {
                 return HookResult.Continue;
@@ -79,15 +91,18 @@ namespace DamageManagement
                 {
                     var victim = hook.GetParam<CEntityInstance>(0);
                     var damageInfo = hook.GetParam<CTakeDamageInfo>(1);
+                    if (damageInfo.Inflictor.Value == null || damageInfo.Attacker.Value == null)
+                        return HookResult.Continue;
 
                     string inflictor = damageInfo.Inflictor.Value.DesignerName ?? "";
                     var attackPlayer = new CCSPlayerPawn(damageInfo.Attacker.Value.Handle);
                     var playerTakenDmg = new CCSPlayerController(victim.Handle);
-                    
-                    //Check if friendly fire
-                    if (attackPlayer.TeamNum == playerTakenDmg.TeamNum && "player".Equals(victim.DesignerName))
-                    {
 
+                    if (
+                        attackPlayer.TeamNum == playerTakenDmg.TeamNum
+                        && "player".Equals(victim.DesignerName)
+                    )
+                    {
                         if (enableDmgInflictors.Contains(inflictor))
                         {
                             isSlayCommand = false;
@@ -105,7 +120,6 @@ namespace DamageManagement
             }
             return HookResult.Continue;
         }
-
 
         [ConsoleCommand("dmg_manage_enable", "Enable plugin")]
         [CommandHelper(minArgs: 1, usage: "[true/false]", whoCanExecute: CommandUsage.SERVER_ONLY)]
@@ -125,6 +139,5 @@ namespace DamageManagement
             }
             commandInfo.ReplyToCommand("true/false value only");
         }
-
     }
 }
