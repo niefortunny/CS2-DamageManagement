@@ -1,9 +1,7 @@
 ﻿using System.Text.Json.Serialization;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
-using CounterStrikeSharp.API.Modules.Admin;
-using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using DamageManagement.API;
@@ -13,9 +11,6 @@ namespace DamageManagement
 {
     public class Config : BasePluginConfig
     {
-        [JsonPropertyName("enable")]
-        public bool enableCfg { get; set; } = true;
-
         [JsonPropertyName("enable_inflictors")]
         public string[] listWeapons { get; set; } =
             [
@@ -32,11 +27,17 @@ namespace DamageManagement
     {
         public override string ModuleName => "CS2-DamageManagement";
 
-        public override string ModuleVersion => "1.1";
+        public override string ModuleVersion => "1.2";
         public override string ModuleAuthor => "HoanNK";
         public Config Config { get; set; } = new Config();
-        bool enabled { get; set; }
         static bool isSlayCommand { get; set; }
+
+        public FakeConVar<bool> FaceitDmgEnabled = new(
+            "faceit_dmg_enable",
+            "Enable faceit alike team damage",
+            true
+        );
+        public bool IsFaceitDmgEnabled = true;
 
         //This contains all designer name of the weapon class that allow to be taken damage to the teammates
         //Designer name can be found here https://cs2.poggu.me/dumped-data/entity-list
@@ -51,13 +52,17 @@ namespace DamageManagement
         {
             managementAPI = new DamageManagementAPI();
             Capabilities.RegisterPluginCapability(DamageManagemenCapability, () => managementAPI);
-
             VirtualFunctions.CBaseEntity_TakeDamageOldFunc.Hook(OnTakeDamage, HookMode.Pre);
+
+            IsFaceitDmgEnabled = FaceitDmgEnabled.Value;
+            FaceitDmgEnabled.ValueChanged += (sender, value) =>
+            {
+                IsFaceitDmgEnabled = value;
+            };
         }
 
         public void OnConfigParsed(Config config)
         {
-            enabled = config.enableCfg;
             enableDmgInflictors = config.listWeapons;
             if (enableDmgInflictors.Length == 0)
             {
@@ -85,7 +90,7 @@ namespace DamageManagement
             {
                 return HookResult.Continue;
             }
-            if (enabled)
+            if (IsFaceitDmgEnabled)
             {
                 try
                 {
@@ -119,25 +124,6 @@ namespace DamageManagement
                 return HookResult.Continue;
             }
             return HookResult.Continue;
-        }
-
-        [ConsoleCommand("dmg_manage_enable", "Enable plugin")]
-        [CommandHelper(minArgs: 1, usage: "[true/false]", whoCanExecute: CommandUsage.SERVER_ONLY)]
-        [RequiresPermissions("@css/cvar")]
-        public void OnEnableCommand(CCSPlayerController? player, CommandInfo commandInfo)
-        {
-            string arg = commandInfo.GetArg(1);
-            if ("true".Equals(arg) || "1".Equals(arg))
-            {
-                enabled = true;
-                return;
-            }
-            if ("false".Equals(arg) || "0".Equals(arg))
-            {
-                enabled = false;
-                return;
-            }
-            commandInfo.ReplyToCommand("true/false value only");
         }
     }
 }
